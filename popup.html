@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      body {
+        width: 250px;
+        font-family: 'Malgun Gothic', sans-serif;
+        padding: 10px;
+      }
+      .title {
+        font-size: 16px;
+        font-weight: bold;
+        border-bottom: 2px solid #eee;
+        padding-bottom: 5px;
+        margin-bottom: 10px;
+      }
+      .item {
+        margin-bottom: 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .name {
+        font-weight: bold;
+        color: #333;
+      }
+      .dday {
+        color: #e74c3c;
+        font-weight: bold;
+      }
+      .anniv {
+        font-size: 0.9em;
+        color: #ebadd4;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="title">📅 러끼님과 함께해야할 기념일</div>
+    <div id="anniversary-list"></div>
+    <script src="popup.js"></script>
+  </body>
+</html>
