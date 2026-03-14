@@ -30,7 +30,7 @@ chrome.runtime.onInstalled.addListener(() => {
   // 알람 생성 (주기적 실행)
   chrome.alarms.create('checkChzzkLive', { periodInMinutes: 1 }); // 치지직 체크 (1분)
   chrome.alarms.create('checkYoutube', { periodInMinutes: 1 }); // 유튜브 체크 (1분)
-  chrome.alarms.create('checkAnniversary', { periodInMinutes: 60 }); // 생일/데뷔 체크 (1시간)
+  chrome.alarms.create('checkAnniversary', { periodInMinutes: 10 }); // 생일/데뷔 체크 (1시간)
 });
 
 // 알람 발생 시 해당 기능 실행
@@ -57,16 +57,16 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 // ========================================================
 async function checkChzzkStream() {
   try {
-    const response = await fetch(CHZZK_API_URL);
-    const data = await response.json();
+    const response = await fetch(CHZZK_API_URL, { cache: 'no-store' });
+    if (!response.ok) throw new Error('Network response was not ok');
 
-    // 데이터 유효성 검사
+    const data = await response.json();
     if (!data || !data.content) return;
 
     const content = data.content;
     const currentStatus = content.status; // 'OPEN' or 'CLOSE'
 
-    // 방송 제목 (없으면 기본 멘트), 줄바꿈 제거
+    // 방송 정보 정리
     const liveTitle = (content.liveTitle || '방송이 시작되었습니다!').replace(
       /\n/g,
       ' ',
@@ -76,20 +76,19 @@ async function checkChzzkStream() {
     chrome.storage.local.get(['lastChzzkStatus'], (result) => {
       const lastStatus = result.lastChzzkStatus || 'CLOSE';
 
-      // 방송이 'CLOSE'였다가 'OPEN'으로 바뀌었을 때만 알림 발송
+      // 방송이 꺼져있다가 켜진 경우에만 알림 발생
       if (lastStatus !== 'OPEN' && currentStatus === 'OPEN') {
         const notificationId = `chzzk-${Date.now()}`;
 
         chrome.notifications.create(notificationId, {
-          type: 'basic',
-          iconUrl: 'icon.png',
-          title: `📢 치지직 방송 시작! [${liveCategory}]`,
-          message: liveTitle,
+          type: 'basic', // 'image'에서 'basic'으로 변경
+          iconUrl: 'icon.png', // 확장 프로그램 내부 아이콘 사용 (안전)
+          title: `${MUSE_LIST[0].name} 방송 시작!`,
+          message: `#${liveCategory} ${liveTitle}`, // 제목에 카테고리 포함
           priority: 2,
         });
       }
 
-      // 현재 상태 저장
       chrome.storage.local.set({ lastChzzkStatus: currentStatus });
     });
   } catch (error) {
@@ -108,7 +107,9 @@ function checkNewVideos() {
 
 async function checkNewVideoForChannel(channel) {
   try {
-    const response = await fetch(YOUTUBE_RSS_URL(channel.id));
+    const response = await fetch(YOUTUBE_RSS_URL(channel.id), {
+      cache: 'no-store',
+    });
     const text = await response.text();
 
     const entryMatch = text.match(/<entry>([\s\S]*?)<\/entry>/);
@@ -132,8 +133,8 @@ async function checkNewVideoForChannel(channel) {
       chrome.notifications.create(`youtube-${channel.id}-${vid}`, {
         type: 'basic',
         iconUrl: 'icon.png',
-        title: `유튜브 새 영상! (${channel.label})`,
-        message: vTitle || '제목 없음',
+        title: `🎬 유튜브 새 영상 업로드!`,
+        message: vTitle || '새 영상이 올라왔어요.',
         priority: 2,
       });
 
@@ -151,13 +152,14 @@ async function checkNewVideoForChannel(channel) {
 }
 
 // ========================================================
-// [기능 3] 생일 알림
+// [기능 3] 생일 및 데뷔일 알림
 // ========================================================
 function checkBirthdays() {
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1;
   const currentDay = now.getDate();
+  const todayStr = `${currentYear}-${currentMonth}-${currentDay}`;
 
   chrome.storage.local.get(['birthdayLog'], (result) => {
     let log = result.birthdayLog || {};
@@ -165,16 +167,16 @@ function checkBirthdays() {
 
     MUSE_LIST.forEach((muse) => {
       if (muse.month === currentMonth && muse.day === currentDay) {
-        if (log[muse.name] !== currentYear) {
-          const age = currentYear - muse.year + 1;
+        if (log[muse.name] !== todayStr) {
+          const age = currentYear - muse.year + 1; // 한국 나이 계산 (만 나이라면 +1 제거)
           chrome.notifications.create(`birthday-${muse.name}`, {
             type: 'basic',
             iconUrl: 'icon.png',
             title: `🎂 오늘은 ${muse.name}님 생일!`,
-            message: `${age}번째 생일을 축하해주세요!`,
+            message: `생일을 축하해주세요!`,
             priority: 2,
           });
-          log[muse.name] = currentYear;
+          log[muse.name] = todayStr;
           needUpdate = true;
         }
       }
@@ -183,9 +185,6 @@ function checkBirthdays() {
   });
 }
 
-// ========================================================
-// [기능 4] 데뷔일 알림
-// ========================================================
 function checkDebutDays() {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
@@ -210,6 +209,7 @@ function checkDebutDays() {
         const titleMsg = isAnniversaryDate
           ? `🎉 ${muse.name} 님 데뷔 ${currentYear - muse.year}주년!`
           : `🎉 ${muse.name} 님 데뷔 ${dayCount}일!`;
+
         chrome.notifications.create(`debut-${muse.name}-${dayCount}`, {
           type: 'basic',
           iconUrl: 'icon.png',
@@ -231,20 +231,21 @@ function checkDebutDays() {
 chrome.notifications.onClicked.addListener((notiId) => {
   if (notiId.startsWith('chzzk-')) {
     chrome.tabs.create({ url: CHZZK_LIVE_URL });
-  } else if (notiId.startsWith('cafe-')) {
-    chrome.storage.local.get(['lastCafeLink'], (r) => {
-      if (r.lastCafeLink) chrome.tabs.create({ url: r.lastCafeLink });
-    });
   } else if (notiId.startsWith('youtube-')) {
-    const channelMatch = notiId.match(/^youtube-([^-]+)-/);
-    const channelId = channelMatch?.[1];
-    chrome.storage.local.get(
-      ['lastVideoLinkByChannel', 'lastVideoLink'],
-      (r) => {
-        const byChannel = r.lastVideoLinkByChannel || {};
-        const link = channelId ? byChannel[channelId] : r.lastVideoLink;
-        if (link) chrome.tabs.create({ url: link });
-      },
-    );
+    // 하이픈(-) 기준으로 나누되, youtube 접두사와 마지막 비디오 ID를 제외한 중간 부분이 채널 ID입니다.
+    const parts = notiId.split('-');
+    // youtube - 채널ID - 비디오ID 구조이므로,
+    // 채널 ID에 하이픈이 포함되어 있어도 정확하게 추출할 수 있도록 합니다.
+    const videoId = parts.pop(); // 마지막 요소 (비디오 ID) 추출
+    const channelId = parts.slice(1).join('-'); // 'youtube' 제외하고 나머지를 다시 합침
+
+    chrome.storage.local.get(['lastVideoLinkByChannel'], (r) => {
+      const byChannel = r.lastVideoLinkByChannel || {};
+      const link = byChannel[channelId];
+
+      // 만약 저장된 링크가 없다면 기본 유튜브 링크라도 생성해서 이동
+      const finalLink = link || `https://www.youtube.com/watch?v=${videoId}`;
+      chrome.tabs.create({ url: finalLink });
+    });
   }
 });
