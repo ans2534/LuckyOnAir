@@ -6,8 +6,7 @@
   "permissions": ["notifications", "alarms", "storage"],
   "host_permissions": [
     "https://api.chzzk.naver.com/*",
-    "https://www.youtube.com/*",
-    "https://apis.naver.com/*"
+    "https://www.youtube.com/*"
   ],
   "background": {
     "service_worker": "background.js"
